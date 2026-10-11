@@ -151,6 +151,7 @@ const FORCED = PARAMS.get('mode');
 const root = document.getElementById('root');
 const digitsEl = document.getElementById('digits');
 const plusEl = document.getElementById('plus');
+const notify = new Audio('notify.mp3'); // played when time is added
 document.getElementById('title').textContent = TITLE;
 document.getElementById('subtitle').textContent = SUBTITLE;
 
@@ -229,6 +230,12 @@ function showPlus(ms) {
   restart(root, 'bump');
 }
 
+function playNotify() {
+  notify.currentTime = 0; // restart if the previous one is still playing
+  // stays silent if notify.mp3 is missing, or in a regular browser until the page is clicked
+  notify.play().catch(() => {});
+}
+
 async function poll() {
   try {
     const sent = Date.now();
@@ -239,7 +246,10 @@ async function poll() {
     clockOffset = next.now - (sent + Date.now()) / 2;
     const added = state ? Math.max(0, remaining(next)) - before : 0;
     state = next;
-    if (added > 1500) showPlus(added);
+    if (added > 1500) {
+      showPlus(added);
+      playNotify();
+    }
   } catch (e) {
     // keep counting from the last known snapshot
   }

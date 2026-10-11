@@ -59,6 +59,7 @@ const POLL_MS = 2000;
 const wrap = document.getElementById('wrap');
 const timeEl = document.getElementById('time');
 const plusEl = document.getElementById('plus');
+const notify = new Audio('notify.mp3'); // played when time is added
 
 let state = null;      // last snapshot from the worker
 let clockOffset = 0;   // worker clock minus local clock
@@ -92,6 +93,12 @@ function showPlus(ms) {
   }
 }
 
+function playNotify() {
+  notify.currentTime = 0; // restart if the previous one is still playing
+  // stays silent if notify.mp3 is missing, or in a regular browser until the page is clicked
+  notify.play().catch(() => {});
+}
+
 async function poll() {
   try {
     const sent = Date.now();
@@ -102,7 +109,10 @@ async function poll() {
     clockOffset = next.now - (sent + Date.now()) / 2;
     const added = state ? Math.max(0, remaining(next)) - before : 0;
     state = next;
-    if (added > 1500) showPlus(added);
+    if (added > 1500) {
+      showPlus(added);
+      playNotify();
+    }
   } catch (e) {
     // keep counting from the last known snapshot
   }
