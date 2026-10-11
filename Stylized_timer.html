@@ -38,12 +38,27 @@
   #plus { fill: #fff3cf; font-size: 60px; font-weight: 600; opacity: 0; filter: drop-shadow(0 0 8px var(--glow)); }
   #plus.show { animation: rise 2.6s ease-out; }
 
+  /* sun by day, moon by night; both are always in the page and cross-fade */
+  .sun, .moon { transition: opacity 3s; }
+  .sun, .day .moon { opacity: 0; }
+  .day .sun { opacity: 1; }
+  .orbit { animation: spin 240s linear infinite; }
+  .rays { animation: spin 120s linear infinite; }
+  .disc { animation: breathe 7s ease-in-out infinite; }
+  .crescent { animation: sway 11s ease-in-out infinite; }
+
   .twinkle { animation: twinkle 3.2s ease-in-out infinite; }
   .twinkle:nth-of-type(2n) { animation-delay: -1.1s; }
   .twinkle:nth-of-type(3n) { animation-delay: -2.2s; }
 
   @keyframes bump { 30% { transform: scale(1.05); } }
   @keyframes twinkle { 50% { opacity: .3; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes breathe { 50% { opacity: .82; } }
+  @keyframes sway {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+  }
   @keyframes rise {
     0% { opacity: 0; transform: translateY(30px); }
     15% { opacity: 1; transform: translateY(0); }
@@ -71,25 +86,8 @@
     <!-- four-point sparkle, radius 10 -->
     <path id="star" d="M0 -10 Q0 0 10 0 Q0 0 0 10 Q0 0 -10 0 Q0 0 0 -10 Z"/>
     <path id="moon" d="M20 -44 A48 48 0 1 0 20 44 A46 46 0 0 1 20 -44 Z"/>
-
-    <!-- left-side ornaments; mirrored for the right side -->
-    <g id="side">
-      <circle class="thin dots" cx="-668" cy="-18" r="98"/>
-      <use href="#moon" class="gold glow" transform="translate(-672 -18)"/>
-      <use href="#star" class="gold glow twinkle" transform="translate(-632 -18) scale(1.9)"/>
-      <use href="#star" class="gold glow twinkle" transform="translate(-574 4) scale(2.2 3.2)"/>
-      <use href="#star" class="gold glow twinkle" transform="translate(-512 -132) scale(2.4 3.4)"/>
-      <use href="#star" class="gold glow twinkle" transform="translate(-328 -200) scale(1.8 2.6)"/>
-      <use href="#star" class="gold twinkle" transform="translate(-552 190) scale(1.2)"/>
-      <use href="#star" class="gold glow twinkle" transform="translate(-360 190) scale(1.6 2.2)"/>
-      <path class="thin" d="M-576 -204 H-386"/>
-      <path class="thin dots" d="M-600 -196 V-150 M-512 -196 V-160 M-512 -100 V-40"/>
-      <path class="gold" d="M-600 -148 l5 12 l-5 12 l-5 -12 Z"/>
-      <circle class="gold" cx="-576" cy="-204" r="3.5"/>
-      <circle class="gold" cx="-386" cy="-204" r="3.5"/>
-      <path class="thin" d="M-742 -150 C-770 -120 -772 -70 -772 -40 M-742 150 C-770 120 -772 70 -772 40"/>
-      <use href="#star" class="gold" transform="translate(-806 0) scale(1.6 3)"/>
-    </g>
+    <path id="ray" d="M0 -42 L4 -52 L0 -70 L-4 -52 Z"/>
+    <path id="ray-short" d="M0 -42 L3 -49 L0 -58 L-3 -49 Z"/>
   </defs>
 
   <!-- plaque -->
@@ -97,8 +95,35 @@
   <use href="#outline" class="frame" stroke-width="3.5"/>
   <use href="#outline" class="thin" stroke-width="1.6" transform="scale(.972 .925)"/>
 
-  <use href="#side"/>
-  <use href="#side" transform="scale(-1 1)"/>
+  <!-- left-side ornaments; the script mirrors them to the right -->
+  <g id="left">
+    <g transform="translate(-670 -18)">
+      <circle class="thin dots orbit" r="98"/>
+      <g class="moon">
+        <g class="crescent">
+          <use href="#moon" class="gold glow" transform="translate(-2 0)"/>
+          <use href="#star" class="gold glow twinkle" transform="translate(38 0) scale(1.9)"/>
+        </g>
+      </g>
+      <g class="sun" transform="scale(1.12)">
+        <g class="rays gold" id="rays"></g>
+        <circle class="gold glow disc" r="31"/>
+      </g>
+    </g>
+    <use href="#star" class="gold glow twinkle" transform="translate(-574 4) scale(2.2 3.2)"/>
+    <use href="#star" class="gold glow twinkle" transform="translate(-512 -132) scale(2.4 3.4)"/>
+    <use href="#star" class="gold glow twinkle" transform="translate(-328 -200) scale(1.8 2.6)"/>
+    <use href="#star" class="gold twinkle" transform="translate(-552 190) scale(1.2)"/>
+    <use href="#star" class="gold glow twinkle" transform="translate(-360 190) scale(1.6 2.2)"/>
+    <path class="thin" d="M-576 -204 H-386"/>
+    <path class="thin dots" d="M-600 -196 V-150 M-512 -196 V-160 M-512 -100 V-40"/>
+    <path class="gold" d="M-600 -148 l5 12 l-5 12 l-5 -12 Z"/>
+    <circle class="gold" cx="-576" cy="-204" r="3.5"/>
+    <circle class="gold" cx="-386" cy="-204" r="3.5"/>
+    <path class="thin" d="M-742 -150 C-770 -120 -772 -70 -772 -40 M-742 150 C-770 120 -772 70 -772 40"/>
+    <use href="#star" class="gold" transform="translate(-806 0) scale(1.6 3)"/>
+  </g>
+  <g id="right" transform="scale(-1 1)"></g>
   <use href="#star" class="gold" transform="translate(0 -250) scale(3.6 5.6)"/>
   <use href="#star" class="gold" transform="translate(0 250) scale(3.6 5.6)"/>
 
@@ -115,8 +140,13 @@ const WORKER_URL = 'https://marathon-timer.YOUR-SUBDOMAIN.workers.dev';
 const POLL_MS = 2000;
 const TITLE = 'Marathon';
 const SUBTITLE = 'Donations add time';
-// timer2.html?demo shows a sample countdown without contacting the worker
-const DEMO = location.search.includes('demo');
+const DAY_FROM = 6;       // the sun is shown from this hour...
+const DAY_TO = 18;        // ...up to (not including) this one; the moon otherwise
+// Stylized_timer.html?demo shows a sample countdown without contacting the worker;
+// ?mode=day or ?mode=night forces the icon, for previewing
+const PARAMS = new URLSearchParams(location.search);
+const DEMO = PARAMS.has('demo');
+const FORCED = PARAMS.get('mode');
 
 const root = document.getElementById('root');
 const digitsEl = document.getElementById('digits');
@@ -126,6 +156,19 @@ document.getElementById('subtitle').textContent = SUBTITLE;
 
 const DIGIT_W = 112;
 const COLON_W = 56;
+
+let rays = '';
+for (let i = 0; i < 12; i++) rays += `<use href="#${i % 2 ? 'ray-short' : 'ray'}" transform="rotate(${i * 30})"/>`;
+document.getElementById('rays').innerHTML = rays;
+document.getElementById('right').innerHTML = document.getElementById('left').innerHTML;
+
+// Sun or moon follows this computer's clock, not the timer.
+function updateDay() {
+  const hour = new Date().getHours();
+  root.classList.toggle('day', FORCED ? FORCED === 'day' : hour >= DAY_FROM && hour < DAY_TO);
+}
+updateDay();
+setInterval(updateDay, 30000);
 
 let state = null;      // last snapshot from the worker
 let clockOffset = 0;   // worker clock minus local clock
