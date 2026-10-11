@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Current time</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&display=swap">
+<style>
+  :root {
+    --gold: #ffc45a;
+    --gold-light: #ffe9ae;
+    --glow: rgba(255, 150, 40, .75);
+  }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  svg { display: block; width: 100vw; height: 100vh; }
+  text {
+    font-family: Cinzel, "Times New Roman", serif;
+    font-variant: small-caps;
+    font-variant-numeric: lining-nums;
+    text-anchor: middle;
+  }
+
+  .frame { fill: none; stroke: var(--gold); stroke-linejoin: round; filter: drop-shadow(0 0 3px rgba(255, 150, 40, .55)); }
+  .thin { fill: none; stroke: var(--gold); stroke-width: 2; opacity: .75; }
+  .dots { stroke-dasharray: 2 9; stroke-linecap: round; opacity: .6; }
+  .gold { fill: url(#gold); }
+  .glow { filter: drop-shadow(0 0 7px var(--glow)); }
+
+  .label { fill: var(--gold-light); font-weight: 500; filter: drop-shadow(0 0 6px var(--glow)); }
+  #digits { filter: drop-shadow(0 0 10px var(--glow)) drop-shadow(0 0 26px rgba(255, 130, 20, .45)); }
+  #digits text { fill: url(#gold); font-size: 200px; font-weight: 600; }
+
+  /* sun by day, moon by night; both are always in the page and cross-fade */
+  .sun, .moon { transition: opacity 3s; }
+  .sun, .day .moon { opacity: 0; }
+  .day .sun { opacity: 1; }
+
+  .twinkle { animation: twinkle 3.2s ease-in-out infinite; }
+  .orbit { animation: spin 240s linear infinite; }
+  .rays { animation: spin 120s linear infinite; }
+  .disc { animation: breathe 7s ease-in-out infinite; }
+  .crescent { animation: sway 11s ease-in-out infinite; }
+
+  @keyframes twinkle { 50% { opacity: .3; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes breathe { 50% { opacity: .82; } }
+  @keyframes sway {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+  }
+</style>
+</head>
+<body>
+<svg id="root" viewBox="-720 -310 1440 620" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff1c4"/>
+      <stop offset=".5" stop-color="#ffc85e"/>
+      <stop offset="1" stop-color="#ee9a2c"/>
+    </linearGradient>
+    <radialGradient id="plate" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="680">
+      <stop offset="0" stop-color="#22140b"/>
+      <stop offset=".7" stop-color="#150d08"/>
+      <stop offset="1" stop-color="#0b0705"/>
+    </radialGradient>
+
+    <!-- plaque outline: one closed path, used for both the fill and the frame -->
+    <path id="outline" d="M0 -277 C6 -231 30 -205 84 -200 L448 -200 C454 -161 490 -145 532 -141 C592 -135 642 -95 642 -52 L642 -40 L672 0 L642 40 L642 52 C642 95 592 135 532 141 C490 145 454 161 448 200 L84 200 C30 205 6 231 0 277 C-6 231 -30 205 -84 200 L-448 200 C-454 161 -490 145 -532 141 C-592 135 -642 95 -642 52 L-642 40 L-672 -0 L-642 -40 L-642 -52 C-642 -95 -592 -135 -532 -141 C-490 -145 -454 -161 -448 -200 L-84 -200 C-30 -205 -6 -231 -0 -277 Z"/>
+    <!-- four-point sparkle, radius 10 -->
+    <path id="star" d="M0 -10 Q0 0 10 0 Q0 0 0 10 Q0 0 -10 0 Q0 0 0 -10 Z"/>
+    <path id="moon" d="M20 -44 A48 48 0 1 0 20 44 A46 46 0 0 1 20 -44 Z"/>
+    <path id="ray" d="M0 -42 L4 -52 L0 -70 L-4 -52 Z"/>
+    <path id="ray-short" d="M0 -42 L3 -49 L0 -58 L-3 -49 Z"/>
+  </defs>
+
+  <!-- plaque -->
+  <use href="#outline" fill="url(#plate)"/>
+  <use href="#outline" class="frame" stroke-width="3.5"/>
+  <use href="#outline" class="thin" stroke-width="1.6" transform="scale(.965 .915)"/>
+  <use href="#star" class="gold" transform="translate(0 -212) scale(2.8 4.4)"/>
+  <use href="#star" class="gold" transform="translate(0 224) scale(2.1 3.2)"/>
+
+  <!-- left-side ornaments; the script mirrors them to the right -->
+  <g id="left">
+    <path class="thin" d="M-436 -158 H-262"/>
+    <circle class="gold" cx="-436" cy="-158" r="3.5"/>
+    <circle class="gold" cx="-262" cy="-158" r="3.5"/>
+    <path class="thin dots" d="M-420 -150 V-126"/>
+    <path class="gold" d="M-420 -124 l5 11 l-5 11 l-5 -11 Z"/>
+    <use href="#star" class="gold glow twinkle" transform="translate(-212 -150) scale(1.8 2.6)"/>
+    <use href="#star" class="gold" transform="translate(-656 0) scale(1.6 3)"/>
+
+    <g transform="translate(-520 -20)">
+      <circle class="thin dots orbit" r="88"/>
+      <g class="moon">
+        <g class="crescent">
+          <use href="#moon" class="gold glow" transform="translate(-4 0)"/>
+          <use href="#star" class="gold glow twinkle" transform="translate(34 0) scale(1.9)"/>
+        </g>
+      </g>
+      <g class="sun">
+        <g class="rays gold" id="rays"></g>
+        <circle class="gold glow disc" r="31"/>
+      </g>
+    </g>
+  </g>
+  <g id="right" transform="scale(-1 1)"></g>
+
+  <g id="digits"></g>
+  <text class="label" y="142" font-size="38" letter-spacing="6" id="date"></text>
+</svg>
+
+<script>
+const LOCALE = 'en-US';   // language of the date line
+const DAY_FROM = 6;       // the sun is shown from this hour...
+const DAY_TO = 18;        // ...up to (not including) this one; the moon otherwise
+// Current_time.html?mode=day or ?mode=night forces the icon, for previewing
+const FORCED = new URLSearchParams(location.search).get('mode');
+
+const root = document.getElementById('root');
+const digitsEl = document.getElementById('digits');
+const dateEl = document.getElementById('date');
+
+const DIGIT_W = 112;
+const COLON_W = 56;
+
+let rays = '';
+for (let i = 0; i < 12; i++) rays += `<use href="#${i % 2 ? 'ray-short' : 'ray'}" transform="rotate(${i * 30})"/>`;
+document.getElementById('rays').innerHTML = rays;
+document.getElementById('right').innerHTML = document.getElementById('left').innerHTML;
+
+const pad = (n) => String(n).padStart(2, '0');
+
+// Every digit gets its own fixed-width slot so the row does not shift as digits change.
+function drawDigits(text) {
+  const width = [...text].reduce((w, c) => w + (c === ':' ? COLON_W : DIGIT_W), 0);
+  let x = -width / 2;
+  let html = '';
+  for (const c of text) {
+    if (c === ':') {
+      const cx = x + COLON_W / 2;
+      html += `<use href="#star" class="gold" transform="translate(${cx} -62) scale(1.7 2.3)"/>`;
+      html += `<use href="#star" class="gold" transform="translate(${cx} 2) scale(1.7 2.3)"/>`;
+      x += COLON_W;
+    } else {
+      html += `<text x="${x + DIGIT_W / 2}" y="42">${c}</text>`;
+      x += DIGIT_W;
+    }
+  }
+  digitsEl.innerHTML = html;
+}
+
+let shown = '';
+
+function render() {
+  const now = new Date();
+  const text = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  if (text === shown) return;
+  shown = text;
+  drawDigits(text);
+  dateEl.textContent = now.toLocaleDateString(LOCALE, { month: 'long', day: 'numeric', year: 'numeric' });
+  const day = FORCED ? FORCED === 'day' : now.getHours() >= DAY_FROM && now.getHours() < DAY_TO;
+  root.classList.toggle('day', day);
+}
+
+render();
+setInterval(render, 100);
+</script>
+</body>
+</html>

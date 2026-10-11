@@ -66,15 +66,8 @@
       <stop offset="1" stop-color="#0b0705"/>
     </radialGradient>
 
-    <!-- one quarter of the plaque outline (top right); the rest is mirrored -->
-    <path id="q" d="M0 -322 C6 -276 30 -250 84 -245 H598 C604 -206 640 -190 682 -186 C742 -180 792 -130 792 -70 V-42 L822 0"/>
-    <path id="qfill" d="M0 -322 C6 -276 30 -250 84 -245 H598 C604 -206 640 -190 682 -186 C742 -180 792 -130 792 -70 V-42 L822 0 H0 Z"/>
-    <g id="outline">
-      <use href="#q"/>
-      <use href="#q" transform="scale(-1 1)"/>
-      <use href="#q" transform="scale(1 -1)"/>
-      <use href="#q" transform="scale(-1 -1)"/>
-    </g>
+    <!-- plaque outline: one closed path, used for both the fill and the frame -->
+    <path id="outline" d="M0 -322 C6 -276 30 -250 84 -245 L598 -245 C604 -206 640 -190 682 -186 C742 -180 792 -130 792 -70 L792 -42 L822 0 L792 42 L792 70 C792 130 742 180 682 186 C640 190 604 206 598 245 L84 245 C30 250 6 276 0 322 C-6 276 -30 250 -84 245 L-598 245 C-604 206 -640 190 -682 186 C-742 180 -792 130 -792 70 L-792 42 L-822 -0 L-792 -42 L-792 -70 C-792 -130 -742 -180 -682 -186 C-640 -190 -604 -206 -598 -245 L-84 -245 C-30 -250 -6 -276 -0 -322 Z"/>
     <!-- four-point sparkle, radius 10 -->
     <path id="star" d="M0 -10 Q0 0 10 0 Q0 0 0 10 Q0 0 -10 0 Q0 0 0 -10 Z"/>
     <path id="moon" d="M20 -44 A48 48 0 1 0 20 44 A46 46 0 0 1 20 -44 Z"/>
@@ -100,13 +93,7 @@
   </defs>
 
   <!-- plaque -->
-  <g fill="url(#plate)">
-    <use href="#qfill"/>
-    <use href="#qfill" transform="scale(-1 1)"/>
-    <use href="#qfill" transform="scale(1 -1)"/>
-    <use href="#qfill" transform="scale(-1 -1)"/>
-    <rect x="-700" y="-180" width="1400" height="360"/>
-  </g>
+  <use href="#outline" fill="url(#plate)"/>
   <use href="#outline" class="frame" stroke-width="3.5"/>
   <use href="#outline" class="thin" stroke-width="1.6" transform="scale(.972 .925)"/>
 
