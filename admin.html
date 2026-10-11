@@ -43,6 +43,17 @@
   td, th { text-align: left; padding: 5px 8px; border-top: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 400; border-top: 0; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+  .tabs button {
+    border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+    color: var(--muted); padding: 8px 14px; margin-bottom: -1px;
+  }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+  .panel { display: grid; gap: 16px; }
+  [hidden] { display: none !important; }
+  #offline { border-color: var(--bad); }
+  .head { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .head h2 { margin: 0; }
   #toast {
     position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: 90vw;
     background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px;
@@ -56,12 +67,28 @@
 <main>
   <header>
     <h1>Марафон-таймер</h1>
-    <div class="row">
+    <div class="row" id="sync" hidden>
       <button id="pull">⬇ Pull — завантажити з воркера</button>
-      <button id="push" class="primary">⬆ Push — зберегти у воркер</button>
+      <button id="push">⬆ Push — зберегти у воркер</button>
     </div>
   </header>
 
+  <section id="offline" hidden>
+    <div class="head">
+      <h2>Немає з'єднання з воркером</h2>
+      <button id="retry" class="primary">↻ Повторити</button>
+    </div>
+    <div class="out" id="offlineOut"></div>
+  </section>
+
+  <div class="panel" id="app" hidden>
+  <nav class="tabs">
+    <button data-tab="tabTimer" class="active">Таймер і тарифи</button>
+    <button data-tab="tabEvents">Журнал подій</button>
+    <button data-tab="tabSettings">Налаштування</button>
+  </nav>
+
+  <div class="panel" id="tabTimer">
   <section>
     <h2>Таймер <span id="badge" class="badge">—</span></h2>
     <div class="row">
@@ -98,7 +125,9 @@
     </div>
     <p class="hint">Донат рахується пропорційно сумі. Prime-підписка — це Tier 1. Подаровані підписки рахуються як кількість × тариф рівня.</p>
   </section>
+  </div>
 
+  <div class="panel" id="tabSettings" hidden>
   <section>
     <h2>Monobank</h2>
     <div class="row">
@@ -126,14 +155,21 @@
     <p class="hint">OAuth Redirect URL для застосунку на dev.twitch.tv: <code id="twRedirect">—</code></p>
     <div class="out" id="twOut"></div>
   </section>
+  </div>
 
+  <div class="panel" id="tabEvents" hidden>
   <section>
-    <h2>Журнал подій</h2>
+    <div class="head">
+      <h2>Журнал подій</h2>
+      <button id="eventsRefresh">↻ Оновити</button>
+    </div>
     <table>
       <thead><tr><th>Час</th><th>Джерело</th><th>Подія</th><th></th></tr></thead>
       <tbody id="events"></tbody>
     </table>
   </section>
+  </div>
+  </div>
 </main>
 <div id="toast"></div>
 
@@ -149,6 +185,8 @@ const ACTIONS = { set: 'Встановлено час', add: 'Корекція',
 
 let timer = null;
 let clockOffset = 0;
+// Settings as last synced with the worker (JSON), null until the first pull succeeds
+let savedSettings = null;
 
 async function api(method, path, body) {
   const res = await fetch(WORKER_URL + path, {
@@ -201,6 +239,13 @@ function fillSettings({ settings, info }) {
   setAccounts([], settings.mono.account);
   $('twRedirect').textContent = info.twitchRedirect;
   $('twOut').textContent = info.twitchChannel ? `Підключений канал: ${info.twitchChannel.login}` : 'Канал ще не авторизовано.';
+  savedSettings = JSON.stringify(readSettings());
+  markDirty();
+}
+
+// Highlights Push while the form differs from what the worker has.
+function markDirty() {
+  $('push').classList.toggle('primary', savedSettings !== null && JSON.stringify(readSettings()) !== savedSettings);
 }
 
 function readSettings() {
@@ -261,6 +306,17 @@ const timerAction = async (body) => showStatus(await api('POST', '/api/timer', b
 action('pull', pull, 'Налаштування завантажено');
 action('push', push, 'Налаштування збережено');
 action('refresh', refresh);
+action('eventsRefresh', refresh);
+document.addEventListener('input', markDirty);
+
+for (const tab of document.querySelectorAll('.tabs button')) {
+  tab.addEventListener('click', () => {
+    for (const t of document.querySelectorAll('.tabs button')) t.classList.toggle('active', t === tab);
+    for (const p of document.querySelectorAll('.panel')) p.hidden = p.id !== tab.dataset.tab;
+    if (tab.dataset.tab === 'tabEvents') refresh().catch((e) => toast(e.message, true));
+  });
+}
+
 action('resume', () => timerAction({ action: 'resume' }));
 action('pause', () => timerAction({ action: 'pause' }));
 action('set', () => {
@@ -305,7 +361,21 @@ action('twStatus', async () => {
 });
 
 setInterval(renderTimer, 250);
-Promise.all([pull(), refresh()]).catch((e) => toast(e.message, true));
+
+// Initial load: the tabs stay hidden until the worker answers, an error panel is shown instead.
+async function connect() {
+  let error = null;
+  try {
+    await Promise.all([pull(), refresh()]);
+  } catch (e) {
+    error = e;
+  }
+  $('app').hidden = $('sync').hidden = !!error;
+  $('offline').hidden = !error;
+  if (error) $('offlineOut').textContent = `${WORKER_URL}\n${error.message}`;
+}
+action('retry', connect);
+connect();
 </script>
 </body>
 </html>
