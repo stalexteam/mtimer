@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Marathon timer</title>
+<style>
+  :root {
+    --color: #ffffff;
+    --accent: #7dffb0;
+    --outline: rgba(0, 0, 0, .85);
+    --size: 22vw;
+  }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    font-family: Bahnschrift, "Segoe UI", system-ui, sans-serif;
+    font-weight: 700;
+  }
+  .wrap { position: relative; line-height: 1; }
+  #time {
+    font-size: var(--size);
+    color: var(--color);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .02em;
+    text-shadow:
+      0 0 .04em var(--outline), 0 0 .04em var(--outline), 0 0 .08em var(--outline),
+      0 .05em .12em rgba(0, 0, 0, .6);
+    transition: opacity .4s;
+  }
+  .paused #time { opacity: .55; }
+  .bump #time { animation: bump .5s ease-out; }
+  #plus {
+    position: absolute; right: 0; bottom: 100%;
+    font-size: calc(var(--size) * .32);
+    color: var(--accent);
+    text-shadow: 0 0 .08em var(--outline), 0 0 .08em var(--outline);
+    opacity: 0;
+  }
+  #plus.show { animation: rise 2.6s ease-out; }
+  @keyframes bump { 30% { transform: scale(1.06); color: var(--accent); } }
+  @keyframes rise {
+    0% { opacity: 0; transform: translateY(60%); }
+    15% { opacity: 1; transform: translateY(0); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-40%); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <div id="plus"></div>
+  <div id="time">--:--:--</div>
+</div>
+<script>
+// Worker address (no trailing slash)
+const WORKER_URL = 'https://marathon-timer.YOUR-SUBDOMAIN.workers.dev';
+const POLL_MS = 5000;
+
+const wrap = document.getElementById('wrap');
+const timeEl = document.getElementById('time');
+const plusEl = document.getElementById('plus');
+
+let state = null;      // last snapshot from the worker
+let clockOffset = 0;   // worker clock minus local clock
+
+const pad = (n) => String(n).padStart(2, '0');
+
+function format(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${pad(Math.floor(total / 3600))}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
+}
+
+function remaining(s) {
+  return s.running ? s.endsAt - (Date.now() + clockOffset) : s.remainingMs;
+}
+
+function render() {
+  if (!state) return;
+  const text = format(remaining(state));
+  if (timeEl.textContent !== text) timeEl.textContent = text;
+  wrap.classList.toggle('paused', !state.running);
+}
+
+function showPlus(ms) {
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  plusEl.textContent = `+${h ? h + ':' + pad(Math.floor(total / 60) % 60) : Math.floor(total / 60)}:${pad(total % 60)}`;
+  for (const [el, cls] of [[plusEl, 'show'], [wrap, 'bump']]) {
+    el.classList.remove(cls);
+    void el.offsetWidth; // restart the animation
+    el.classList.add(cls);
+  }
+}
+
+async function poll() {
+  try {
+    const sent = Date.now();
+    const res = await fetch(`${WORKER_URL}/api/timer`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    const next = await res.json();
+    const before = state && Math.max(0, remaining(state));
+    clockOffset = next.now - (sent + Date.now()) / 2;
+    const added = state ? Math.max(0, remaining(next)) - before : 0;
+    state = next;
+    if (added > 1500) showPlus(added);
+  } catch (e) {
+    // keep counting from the last known snapshot
+  }
+  render();
+}
+
+poll();
+setInterval(poll, POLL_MS);
+setInterval(render, 200);
+</script>
+</body>
+</html>

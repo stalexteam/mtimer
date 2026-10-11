@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Марафон-таймер · адмінка</title>
+<style>
+  :root {
+    --bg: #14161b; --card: #1d2027; --line: #2c313c; --text: #e6e8ee; --muted: #8b93a5;
+    --accent: #7c5cff; --ok: #4cd08a; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 80px; background: var(--bg); color: var(--text);
+    font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; display: grid; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  .row + .row { margin-top: 12px; }
+  label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+  label.grow { flex: 1 1 220px; }
+  input, select, button {
+    font: inherit; color: var(--text); background: #12141a; border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 10px; min-width: 0;
+  }
+  input[type=number] { width: 96px; }
+  input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  button { cursor: pointer; background: #262a34; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .readout { font-size: 48px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+  .badge { padding: 2px 8px; border-radius: 99px; font-size: 12px; background: #262a34; color: var(--muted); }
+  .badge.on { background: rgba(76, 208, 138, .15); color: var(--ok); }
+  .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .out { color: var(--muted); font-size: 12px; margin-top: 10px; white-space: pre-wrap; word-break: break-all; }
+  code { background: #12141a; padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 5px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 400; border-top: 0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: 90vw;
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px;
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+  #toast.bad { border-color: var(--bad); color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Марафон-таймер</h1>
+    <div class="row">
+      <button id="pull">⬇ Pull — завантажити з воркера</button>
+      <button id="push" class="primary">⬆ Push — зберегти у воркер</button>
+    </div>
+  </header>
+
+  <section>
+    <h2>Таймер <span id="badge" class="badge">—</span></h2>
+    <div class="row">
+      <div class="readout" id="readout">--:--:--</div>
+      <button id="resume" class="primary">▶ Старт</button>
+      <button id="pause">⏸ Пауза</button>
+      <button id="refresh">↻ Оновити</button>
+    </div>
+    <div class="row">
+      <label>Години <input type="number" id="setH" min="0" value="1"></label>
+      <label>Хвилини <input type="number" id="setM" min="0" max="59" value="0"></label>
+      <label>Секунди <input type="number" id="setS" min="0" max="59" value="0"></label>
+      <button id="set">Встановити час</button>
+    </div>
+    <div class="row">
+      <label>Хвилини <input type="number" id="addM" min="0" value="5"></label>
+      <button id="add">+ Додати</button>
+      <button id="sub">− Відняти</button>
+    </div>
+    <p class="hint">«Встановити час» задає новий залишок і очищує журнал подій. Стан старт/пауза при цьому не змінюється.</p>
+  </section>
+
+  <section>
+    <h2>Тарифи</h2>
+    <div class="row">
+      <label>Кожні, грн <input type="number" id="monoAmount" min="0.01" step="any"></label>
+      <label>додають, секунд <input type="number" id="monoSeconds" min="0" step="any"></label>
+      <label>Мін. донат, грн <input type="number" id="monoMin" min="0" step="any"></label>
+    </div>
+    <div class="row">
+      <label>Twitch Tier 1, секунд <input type="number" id="tier1" min="0"></label>
+      <label>Twitch Tier 2, секунд <input type="number" id="tier2" min="0"></label>
+      <label>Twitch Tier 3, секунд <input type="number" id="tier3" min="0"></label>
+    </div>
+    <p class="hint">Донат рахується пропорційно сумі. Prime-підписка — це Tier 1. Подаровані підписки рахуються як кількість × тариф рівня.</p>
+  </section>
+
+  <section>
+    <h2>Monobank</h2>
+    <div class="row">
+      <label class="grow">Токен (api.monobank.ua) <input type="password" id="monoToken" autocomplete="off"></label>
+      <button id="monoLoad">Завантажити рахунки</button>
+    </div>
+    <div class="row">
+      <label class="grow">Банка / рахунок для донатів <select id="monoAccount"></select></label>
+      <button id="monoHook">Встановити вебхук</button>
+    </div>
+    <div class="out" id="monoOut"></div>
+  </section>
+
+  <section>
+    <h2>Twitch</h2>
+    <div class="row">
+      <label class="grow">Client ID <input type="text" id="twClientId" autocomplete="off"></label>
+      <label class="grow">Client Secret <input type="password" id="twClientSecret" autocomplete="off"></label>
+    </div>
+    <div class="row">
+      <button id="twAuth">Авторизувати канал</button>
+      <button id="twSubscribe">Перепідписати вебхуки</button>
+      <button id="twStatus">Статус підписок</button>
+    </div>
+    <p class="hint">OAuth Redirect URL для застосунку на dev.twitch.tv: <code id="twRedirect">—</code></p>
+    <div class="out" id="twOut"></div>
+  </section>
+
+  <section>
+    <h2>Журнал подій</h2>
+    <table>
+      <thead><tr><th>Час</th><th>Джерело</th><th>Подія</th><th></th></tr></thead>
+      <tbody id="events"></tbody>
+    </table>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+// Worker address (no trailing slash) and the same token as ADMIN_TOKEN in worker.js
+const WORKER_URL = 'https://marathon-timer.YOUR-SUBDOMAIN.workers.dev';
+const ADMIN_TOKEN = 'change-me';
+
+const $ = (id) => document.getElementById(id);
+const RATE_FIELDS = ['monoAmount', 'monoSeconds', 'monoMin', 'tier1', 'tier2', 'tier3'];
+const SOURCES = { mono: 'Monobank', twitch: 'Twitch', admin: 'Адмін' };
+const ACTIONS = { set: 'Встановлено час', add: 'Корекція', pause: 'Пауза', resume: 'Старт' };
+
+let timer = null;
+let clockOffset = 0;
+
+async function api(method, path, body) {
+  const res = await fetch(WORKER_URL + path, {
+    method,
+    headers: { Authorization: `Bearer ${ADMIN_TOKEN}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+function toast(text, bad = false) {
+  const el = $('toast');
+  el.textContent = text;
+  el.className = `show${bad ? ' bad' : ''}`;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => (el.className = ''), bad ? 6000 : 2500);
+}
+
+// Wraps a button handler: disables the button while it runs and reports the outcome.
+function action(id, fn, done) {
+  $(id).addEventListener('click', async () => {
+    $(id).disabled = true;
+    try {
+      await fn();
+      if (done) toast(done);
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      $(id).disabled = false;
+    }
+  });
+}
+
+const pad = (n) => String(n).padStart(2, '0');
+
+function formatDuration(seconds) {
+  const total = Math.abs(Math.round(seconds));
+  return `${pad(Math.floor(total / 3600))}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
+}
+
+// ---------------------------------------------------------------- settings
+
+function fillSettings({ settings, info }) {
+  for (const f of RATE_FIELDS) $(f).value = settings.rates[f];
+  $('monoToken').value = settings.mono.token;
+  $('twClientId').value = settings.twitch.clientId;
+  $('twClientSecret').value = settings.twitch.clientSecret;
+  setAccounts([], settings.mono.account);
+  $('twRedirect').textContent = info.twitchRedirect;
+  $('twOut').textContent = info.twitchChannel ? `Підключений канал: ${info.twitchChannel.login}` : 'Канал ще не авторизовано.';
+}
+
+function readSettings() {
+  const rates = {};
+  for (const f of RATE_FIELDS) rates[f] = Number($(f).value);
+  return {
+    rates,
+    mono: { token: $('monoToken').value, account: $('monoAccount').value },
+    twitch: { clientId: $('twClientId').value, clientSecret: $('twClientSecret').value },
+  };
+}
+
+function setAccounts(accounts, selected) {
+  const select = $('monoAccount');
+  select.replaceChildren(new Option('— не вибрано —', ''));
+  if (selected && !accounts.some((a) => a.id === selected)) select.add(new Option(selected, selected));
+  for (const a of accounts) select.add(new Option(a.title, a.id));
+  select.value = selected || '';
+}
+
+const pull = async () => fillSettings(await api('GET', '/api/settings'));
+const push = async () => fillSettings(await api('PUT', '/api/settings', readSettings()));
+
+// ---------------------------------------------------------------- timer
+
+function showStatus({ timer: next, events }) {
+  timer = next;
+  clockOffset = next.now - Date.now();
+  renderTimer();
+  $('events').replaceChildren(
+    ...events.map((ev) => {
+      const tr = document.createElement('tr');
+      const delta = ev.k === 'add' ? `${ev.s < 0 ? '−' : '+'}${formatDuration(ev.s)}` : ev.k === 'set' ? formatDuration(ev.s) : '';
+      const cells = [new Date(ev.t).toLocaleString('uk-UA'), SOURCES[ev.src] || ev.src, ev.note || ACTIONS[ev.k] || ev.k, delta];
+      cells.forEach((text, i) => {
+        const td = tr.insertCell();
+        td.textContent = text;
+        if (i === 3) td.className = 'num';
+      });
+      return tr;
+    }),
+  );
+}
+
+function renderTimer() {
+  if (!timer) return;
+  const ms = timer.running ? timer.endsAt - (Date.now() + clockOffset) : timer.remainingMs;
+  $('readout').textContent = formatDuration(Math.ceil(Math.max(0, ms) / 1000));
+  $('badge').textContent = timer.running ? 'йде' : 'на паузі';
+  $('badge').className = `badge${timer.running ? ' on' : ''}`;
+}
+
+const refresh = async () => showStatus(await api('GET', '/api/status'));
+const timerAction = async (body) => showStatus(await api('POST', '/api/timer', body));
+
+// ---------------------------------------------------------------- wiring
+
+action('pull', pull, 'Налаштування завантажено');
+action('push', push, 'Налаштування збережено');
+action('refresh', refresh);
+action('resume', () => timerAction({ action: 'resume' }));
+action('pause', () => timerAction({ action: 'pause' }));
+action('set', () => {
+  const seconds = Number($('setH').value) * 3600 + Number($('setM').value) * 60 + Number($('setS').value);
+  if (!confirm(`Встановити таймер на ${formatDuration(seconds)}? Журнал подій буде очищено.`)) return;
+  return timerAction({ action: 'set', seconds });
+});
+action('add', () => timerAction({ action: 'add', seconds: Number($('addM').value) * 60 }));
+action('sub', () => timerAction({ action: 'add', seconds: -Number($('addM').value) * 60 }));
+
+// Monobank / Twitch calls run on the worker with the saved settings, so push first.
+action('monoLoad', async () => {
+  await push();
+  const info = await api('GET', '/api/mono/accounts');
+  setAccounts(info.accounts, readSettings().mono.account);
+  $('monoOut').textContent =
+    `Клієнт: ${info.name}\nВебхук: ${info.webHookUrl || 'не встановлено'}` +
+    (info.webhookOk ? ' ✓' : ' — не вказує на цей воркер, натисніть «Встановити вебхук»');
+});
+action('monoHook', async () => {
+  if (!$('monoAccount').value) throw new Error('Спочатку виберіть банку або рахунок');
+  await push();
+  await api('POST', '/api/mono/webhook');
+  $('monoOut').textContent = 'Вебхук встановлено ✓';
+}, 'Вебхук Monobank встановлено');
+action('twAuth', async () => {
+  await push();
+  const { url } = await api('GET', '/api/twitch/auth-url');
+  window.open(url, '_blank');
+  $('twOut').textContent = 'Підтвердіть доступ у новій вкладці (увійдіть акаунтом каналу), потім натисніть «Статус підписок».';
+});
+const showSubs = (subs) =>
+  ($('twOut').textContent = subs.length ? subs.map((s) => `${s.type}: ${s.error || s.status}`).join('\n') : 'Підписок немає.');
+action('twSubscribe', async () => {
+  await push();
+  showSubs((await api('POST', '/api/twitch/subscribe')).subscriptions);
+});
+action('twStatus', async () => {
+  const res = await api('GET', '/api/twitch/status');
+  showSubs(res.subscriptions);
+  if (res.channel) $('twOut').textContent = `Канал: ${res.channel.login}\n${$('twOut').textContent}`;
+});
+
+setInterval(renderTimer, 250);
+Promise.all([pull(), refresh()]).catch((e) => toast(e.message, true));
+</script>
+</body>
+</html>

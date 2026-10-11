@@ -1,0 +1,8 @@
+name = "marathon-timer"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# npx wrangler kv namespace create TIMER_KV  -> paste the returned id here
+[[kv_namespaces]]
+binding = "TIMER_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
