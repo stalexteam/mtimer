@@ -1,14 +1,13 @@
 // Marathon timer — Cloudflare Worker.
-// Binding: KV namespace TIMER_KV.
+// Bindings: KV namespace TIMER_KV (settings), D1 database TIMER_DB (timer).
 //
-// KV layout:
-//   config        — { settings, internal }  (settings are edited from admin.html)
-//   ev:<ts>:<id>  — one key per timer operation (donation, sub, admin action), data in metadata
-//   state         — timer snapshot computed by replaying ev:* keys (what timer.html reads)
+// KV:  config — { settings, internal }  (settings are edited from admin.html)
+// D1:  state  — the single timer row that timer.html reads
+//      ops    — journal of everything that moved the timer (donation, sub, admin action)
 //
-// The timer is never mutated in place: every webhook only appends its own key and the
-// snapshot is recomputed from the whole log. KV is eventually consistent, so a
-// read-modify-write on a single key would lose donations that arrive close together.
+// The timer lives in D1 because it is strongly consistent: a webhook's update is visible
+// to the next poll from any location and concurrent donations cannot overwrite each other.
+// KV takes up to a minute to propagate, which is fine for settings but not for the timer.
 
 // Must match ADMIN_TOKEN in admin.html. A Worker secret named ADMIN_TOKEN overrides it.
 const ADMIN_TOKEN = 'change-me';
@@ -21,7 +20,6 @@ const DEFAULT_SETTINGS = {
 
 const TWITCH_TYPES = ['channel.subscribe', 'channel.subscription.gift', 'channel.subscription.message'];
 const TWITCH_SCOPE = 'channel:read:subscriptions';
-const SETTLE_MS = 75_000; // KV propagation between locations takes up to ~60s
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -38,29 +36,30 @@ class HttpError extends Error {
 }
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     try {
-      return await route(request, env, ctx);
+      return await route(request, env);
     } catch (e) {
       return json({ error: e.message || String(e) }, e.status || 500);
     }
   },
 };
 
-async function route(request, env, ctx) {
+async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
 
-  if (path === '/api/timer' && method === 'GET') return timerGet(env, ctx);
-  if (path.startsWith('/hook/mono/')) return monoHook(request, env, ctx, path.slice('/hook/mono/'.length));
-  if (path === '/hook/twitch' && method === 'POST') return twitchHook(request, env, ctx);
+  if (path === '/api/timer' && method === 'GET') return timerGet(env);
+  if (path.startsWith('/hook/mono/')) return monoHook(request, env, path.slice('/hook/mono/'.length));
+  if (path === '/hook/twitch' && method === 'POST') return twitchHook(request, env);
   if (path === '/twitch/callback' && method === 'GET') return twitchCallback(url, env);
 
   if (path.startsWith('/api/')) {
     requireAdmin(request, env);
     const cfg = await ensureConfig(env);
+    await ensureSchema(env);
     switch (`${method} ${path}`) {
       case 'GET /api/settings':
         return json(settingsPayload(cfg, url.origin));
@@ -70,9 +69,9 @@ async function route(request, env, ctx) {
         await saveConfig(env, cfg);
         return json(settingsPayload(cfg, url.origin));
       case 'GET /api/status':
-        return json(statusPayload(await sync(env)));
+        return json(await statusPayload(env));
       case 'POST /api/timer':
-        return timerAction(await readJson(request), env, ctx);
+        return timerAction(await readJson(request), env);
       case 'GET /api/mono/accounts':
         return json(await monoAccounts(cfg, url.origin));
       case 'POST /api/mono/webhook':
@@ -188,117 +187,96 @@ function settingsPayload(cfg, origin) {
   return { settings: cfg.settings, info: { ...hookUrls(cfg, origin), twitchChannel: cfg.internal.twitch || null } };
 }
 
-// ---------------------------------------------------------------- timer log
+// ---------------------------------------------------------------- timer
 
-// op: { t: ms timestamp, id, k: 'set' | 'add' | 'pause' | 'resume', s: seconds, src, note }
-// The key is deterministic for a given event, so webhook retries overwrite instead of duplicating.
-async function appendOp(env, op) {
-  const { id, ...meta } = op;
-  const key = `ev:${String(op.t).padStart(13, '0')}:${id.replace(/[^\w.:-]/g, '_').slice(0, 200)}`;
-  await env.TIMER_KV.put(key, '1', { metadata: meta });
-  return { key, ...meta };
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS state (
+     id INTEGER PRIMARY KEY CHECK (id = 1),
+     running INTEGER NOT NULL DEFAULT 0,
+     ends_at INTEGER NOT NULL DEFAULT 0,
+     remaining INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE TABLE IF NOT EXISTS ops (
+     id TEXT PRIMARY KEY, t INTEGER NOT NULL, k TEXT NOT NULL, s INTEGER NOT NULL DEFAULT 0,
+     src TEXT, note TEXT, applied INTEGER NOT NULL DEFAULT 0)`,
+  `INSERT OR IGNORE INTO state (id) VALUES (1)`,
+];
+
+function ensureSchema(env) {
+  if (!env.TIMER_DB) throw new HttpError(503, 'До воркера не прив’язано базу D1 (binding TIMER_DB)');
+  return env.TIMER_DB.batch(SCHEMA.map((sql) => env.TIMER_DB.prepare(sql)));
 }
 
-async function listOps(env) {
-  const ops = [];
-  let cursor;
-  do {
-    const page = await env.TIMER_KV.list({ prefix: 'ev:', cursor });
-    for (const k of page.keys) if (k.metadata) ops.push({ key: k.name, ...k.metadata });
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-  return ops;
-}
-
-function replay(ops) {
-  let running = false;
-  let remainingMs = 0;
-  let endsAt = 0;
-  for (const op of ops) {
-    const ms = (Number(op.s) || 0) * 1000;
-    switch (op.k) {
-      case 'set':
-        remainingMs = Math.max(0, ms);
-        endsAt = op.t + remainingMs;
-        break;
-      case 'add':
-        // an expired running timer restarts from the moment of the donation
-        if (running) endsAt = Math.max(endsAt, op.t) + ms;
-        else remainingMs = Math.max(0, remainingMs + ms);
-        break;
-      case 'pause':
-        if (running) {
-          remainingMs = Math.max(0, endsAt - op.t);
-          running = false;
-        }
-        break;
-      case 'resume':
-        if (!running) {
-          endsAt = op.t + remainingMs;
-          running = true;
-        }
-        break;
-    }
+// How each kind of op changes the state row. While running, the timer is `ends_at`;
+// while paused it is `remaining` (both in ms).
+function stateUpdate(op, now) {
+  const ms = op.s * 1000;
+  switch (op.k) {
+    case 'set':
+      return ['remaining = ?, ends_at = ?', [Math.max(0, ms), now + Math.max(0, ms)]];
+    case 'add':
+      // an expired running timer restarts from the moment of the donation
+      return [
+        `ends_at = CASE WHEN running = 1 THEN MAX(ends_at, ?) + ? ELSE ends_at END,
+         remaining = CASE WHEN running = 1 THEN remaining ELSE MAX(0, remaining + ?) END`,
+        [now, ms, ms],
+      ];
+    case 'pause':
+      return ['remaining = CASE WHEN running = 1 THEN MAX(0, ends_at - ?) ELSE remaining END, running = 0', [now]];
+    case 'resume':
+      return ['ends_at = CASE WHEN running = 0 THEN ? + remaining ELSE ends_at END, running = 1', [now]];
   }
-  return { running, endsAt, remainingMs };
 }
 
-// Recomputes the snapshot from the full log. `extra` are ops written a moment ago
-// that the list may not return yet.
-async function sync(env, extra = [], settled = false) {
-  const ops = await listOps(env);
-  for (const op of extra) if (!ops.some((o) => o.key === op.key)) ops.push(op);
-  ops.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  const state = { ...replay(ops), count: ops.length, syncedAt: Date.now(), settled };
-  await env.TIMER_KV.put('state', JSON.stringify(state));
-  return { state, ops };
+// op: { id, t: ms timestamp of the event, k: 'set' | 'add' | 'pause' | 'resume', s: seconds, src, note }
+// The batch is one transaction. The op id is the event id, so a webhook retry inserts
+// nothing and finds the op already applied: the timer moves exactly once per event.
+async function applyOp(env, op) {
+  const db = env.TIMER_DB;
+  const [assignments, binds] = stateUpdate(op, Date.now());
+  await db.batch([
+    db
+      .prepare('INSERT OR IGNORE INTO ops (id, t, k, s, src, note) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(op.id, op.t, op.k, op.s, op.src, op.note ?? null),
+    db
+      .prepare(`UPDATE state SET ${assignments} WHERE id = 1 AND EXISTS (SELECT 1 FROM ops WHERE id = ? AND applied = 0)`)
+      .bind(...binds, op.id),
+    db.prepare('UPDATE ops SET applied = 1 WHERE id = ?').bind(op.id),
+  ]);
 }
 
-function statusPayload({ state, ops }) {
-  return { timer: { ...state, now: Date.now() }, events: ops.slice(-50).reverse() };
+async function readTimer(env) {
+  const row = await env.TIMER_DB.prepare('SELECT running, ends_at, remaining FROM state WHERE id = 1').first();
+  return { running: !!row?.running, endsAt: row?.ends_at || 0, remainingMs: row?.remaining || 0, now: Date.now() };
 }
 
-async function timerGet(env, ctx) {
-  const state = (await env.TIMER_KV.get('state', { type: 'json', cacheTtl: 30 })) || {
-    running: false,
-    endsAt: 0,
-    remainingMs: 0,
-    settled: true,
-  };
-  // A sync done by a webhook in another location may have missed ops that were still
-  // propagating; one more pass after the propagation window picks them up.
-  if (!state.settled && Date.now() - state.syncedAt > SETTLE_MS) ctx.waitUntil(sync(env, [], true));
-  return json({ running: state.running, endsAt: state.endsAt, remainingMs: state.remainingMs, now: Date.now() });
+async function timerGet(env) {
+  try {
+    return json(await readTimer(env));
+  } catch {
+    // tables are created on the first admin request
+    return json({ running: false, endsAt: 0, remainingMs: 0, now: Date.now() });
+  }
 }
 
-async function timerAction(body, env, ctx) {
+async function statusPayload(env) {
+  const { results } = await env.TIMER_DB.prepare('SELECT t, k, s, src, note FROM ops ORDER BY rowid DESC LIMIT 50').all();
+  return { timer: await readTimer(env), events: results };
+}
+
+async function timerAction(body, env) {
   const action = body?.action;
   if (!['set', 'add', 'pause', 'resume'].includes(action)) throw new HttpError(400, 'Невідома дія');
   const seconds = Math.round(Number(body.seconds));
   if ((action === 'set' || action === 'add') && !Number.isFinite(seconds)) throw new HttpError(400, 'Не задано час');
 
-  const op = await appendOp(env, {
+  await applyOp(env, {
     t: Date.now(),
-    id: `admin:${randomHex(4)}`,
+    id: `admin:${Date.now()}:${randomHex(4)}`,
     k: action,
     s: action === 'set' || action === 'add' ? seconds : 0,
     src: 'admin',
   });
-  const result = await sync(env, [op]);
-  // 'set' overrides everything before it, so the older part of the log is dead weight
-  if (action === 'set') ctx.waitUntil(prune(env, op.key));
-  return json(statusPayload(result));
-}
-
-async function prune(env, beforeKey) {
-  try {
-    const old = (await listOps(env)).filter((op) => op.key < beforeKey);
-    for (let i = 0; i < old.length; i += 20) {
-      await Promise.all(old.slice(i, i + 20).map((op) => env.TIMER_KV.delete(op.key)));
-    }
-  } catch {
-    // best effort: leftovers are ignored by replay anyway
-  }
+  return json(await statusPayload(env));
 }
 
 // ---------------------------------------------------------------- monobank
@@ -333,7 +311,7 @@ async function monoAccounts(cfg, origin) {
   };
 }
 
-async function monoHook(request, env, ctx, secret) {
+async function monoHook(request, env, secret) {
   const cfg = await loadConfig(env);
   if (!cfg || !safeEqual(secret, cfg.internal.monoSecret)) return new Response('Not found', { status: 404 });
   // Monobank validates the URL with a GET when the webhook is registered
@@ -350,7 +328,7 @@ async function monoHook(request, env, ctx, secret) {
 
   const seconds = Math.round((amount / rates.monoAmount) * rates.monoSeconds);
   if (seconds > 0) {
-    const op = await appendOp(env, {
+    await applyOp(env, {
       t: Number(item.time) > 0 ? item.time * 1000 : Date.now(),
       id: `mono:${item.id}`,
       k: 'add',
@@ -358,7 +336,6 @@ async function monoHook(request, env, ctx, secret) {
       src: 'mono',
       note: clip(`${amount.toFixed(2)} · ${clip(item.description, 40)} ${clip(item.comment, 40)}`, 100),
     });
-    ctx.waitUntil(sync(env, [op]));
   }
   return new Response('ok');
 }
@@ -537,7 +514,7 @@ function twitchReward(type, e, rates) {
   return null;
 }
 
-async function twitchHook(request, env, ctx) {
+async function twitchHook(request, env) {
   const cfg = await loadConfig(env);
   const body = await request.text();
   if (!cfg || !(await verifyTwitch(cfg.internal.twitchSecret, request, body))) {
@@ -551,7 +528,7 @@ async function twitchHook(request, env, ctx) {
   if (kind === 'notification' && msg.event) {
     const reward = twitchReward(msg.subscription?.type, msg.event, cfg.settings.rates);
     if (reward && reward.seconds > 0) {
-      const op = await appendOp(env, {
+      await applyOp(env, {
         t: Math.floor(Date.parse(request.headers.get('Twitch-Eventsub-Message-Timestamp'))),
         id: `twitch:${request.headers.get('Twitch-Eventsub-Message-Id')}`,
         k: 'add',
@@ -559,7 +536,6 @@ async function twitchHook(request, env, ctx) {
         src: 'twitch',
         note: clip(reward.note, 100),
       });
-      ctx.waitUntil(sync(env, [op]));
     }
   }
   return new Response(null, { status: 204 });

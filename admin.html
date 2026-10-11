@@ -81,7 +81,7 @@
       <button id="add">+ Додати</button>
       <button id="sub">− Відняти</button>
     </div>
-    <p class="hint">«Встановити час» задає новий залишок і очищує журнал подій. Стан старт/пауза при цьому не змінюється.</p>
+    <p class="hint">«Встановити час» задає новий залишок. Стан старт/пауза при цьому не змінюється.</p>
   </section>
 
   <section>
@@ -265,7 +265,7 @@ action('resume', () => timerAction({ action: 'resume' }));
 action('pause', () => timerAction({ action: 'pause' }));
 action('set', () => {
   const seconds = Number($('setH').value) * 3600 + Number($('setM').value) * 60 + Number($('setS').value);
-  if (!confirm(`Встановити таймер на ${formatDuration(seconds)}? Журнал подій буде очищено.`)) return;
+  if (!confirm(`Встановити таймер на ${formatDuration(seconds)}?`)) return;
   return timerAction({ action: 'set', seconds });
 });
 action('add', () => timerAction({ action: 'add', seconds: Number($('addM').value) * 60 }));

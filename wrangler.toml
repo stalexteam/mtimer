@@ -6,3 +6,9 @@ compatibility_date = "2026-10-01"
 [[kv_namespaces]]
 binding = "TIMER_KV"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# npx wrangler d1 create mtimer  -> paste the returned database_id here
+[[d1_databases]]
+binding = "TIMER_DB"
+database_name = "mtimer"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
