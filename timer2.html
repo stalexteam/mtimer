@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Marathon timer</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&display=swap">
+<style>
+  :root {
+    --gold: #ffc45a;
+    --gold-light: #ffe9ae;
+    --gold-deep: #e8912a;
+    --glow: rgba(255, 150, 40, .75);
+    --plate: #1a100a;
+    --plate-edge: #0b0705;
+  }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  svg { display: block; width: 100vw; height: 100vh; }
+  text {
+    font-family: Cinzel, "Times New Roman", serif;
+    font-variant: small-caps;
+    font-variant-numeric: lining-nums;
+    text-anchor: middle;
+  }
+
+  .frame { fill: none; stroke: var(--gold); stroke-linejoin: round; filter: drop-shadow(0 0 3px rgba(255, 150, 40, .55)); }
+  .thin { fill: none; stroke: var(--gold); stroke-width: 2; opacity: .75; }
+  .dots { stroke-dasharray: 2 9; stroke-linecap: round; opacity: .6; }
+  .gold { fill: url(#gold); }
+  .glow { filter: drop-shadow(0 0 7px var(--glow)); }
+
+  .label { fill: var(--gold-light); font-weight: 500; filter: drop-shadow(0 0 6px var(--glow)); }
+  #digits { transition: opacity .4s; filter: drop-shadow(0 0 10px var(--glow)) drop-shadow(0 0 26px rgba(255, 130, 20, .45)); }
+  #digits text { fill: url(#gold); font-size: 200px; font-weight: 600; }
+  .paused #digits { opacity: .5; }
+  .bump #digits { animation: bump .6s ease-out; transform-box: fill-box; transform-origin: center; }
+
+  #plus { fill: #fff3cf; font-size: 60px; font-weight: 600; opacity: 0; filter: drop-shadow(0 0 8px var(--glow)); }
+  #plus.show { animation: rise 2.6s ease-out; }
+
+  .twinkle { animation: twinkle 3.2s ease-in-out infinite; }
+  .twinkle:nth-of-type(2n) { animation-delay: -1.1s; }
+  .twinkle:nth-of-type(3n) { animation-delay: -2.2s; }
+
+  @keyframes bump { 30% { transform: scale(1.05); } }
+  @keyframes twinkle { 50% { opacity: .3; } }
+  @keyframes rise {
+    0% { opacity: 0; transform: translateY(30px); }
+    15% { opacity: 1; transform: translateY(0); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-24px); }
+  }
+</style>
+</head>
+<body>
+<svg id="root" viewBox="-960 -410 1920 820" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff1c4"/>
+      <stop offset=".5" stop-color="#ffc85e"/>
+      <stop offset="1" stop-color="#ee9a2c"/>
+    </linearGradient>
+    <radialGradient id="plate" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="820">
+      <stop offset="0" stop-color="#22140b"/>
+      <stop offset=".7" stop-color="#150d08"/>
+      <stop offset="1" stop-color="#0b0705"/>
+    </radialGradient>
+
+    <!-- one quarter of the plaque outline (top right); the rest is mirrored -->
+    <path id="q" d="M0 -322 C6 -276 30 -250 84 -245 H598 C604 -206 640 -190 682 -186 C742 -180 792 -130 792 -70 V-42 L822 0"/>
+    <path id="qfill" d="M0 -322 C6 -276 30 -250 84 -245 H598 C604 -206 640 -190 682 -186 C742 -180 792 -130 792 -70 V-42 L822 0 H0 Z"/>
+    <g id="outline">
+      <use href="#q"/>
+      <use href="#q" transform="scale(-1 1)"/>
+      <use href="#q" transform="scale(1 -1)"/>
+      <use href="#q" transform="scale(-1 -1)"/>
+    </g>
+    <!-- four-point sparkle, radius 10 -->
+    <path id="star" d="M0 -10 Q0 0 10 0 Q0 0 0 10 Q0 0 -10 0 Q0 0 0 -10 Z"/>
+    <path id="moon" d="M20 -44 A48 48 0 1 0 20 44 A46 46 0 0 1 20 -44 Z"/>
+
+    <!-- left-side ornaments; mirrored for the right side -->
+    <g id="side">
+      <circle class="thin dots" cx="-668" cy="-18" r="98"/>
+      <use href="#moon" class="gold glow" transform="translate(-672 -18)"/>
+      <use href="#star" class="gold glow twinkle" transform="translate(-632 -18) scale(1.9)"/>
+      <use href="#star" class="gold glow twinkle" transform="translate(-574 4) scale(2.2 3.2)"/>
+      <use href="#star" class="gold glow twinkle" transform="translate(-512 -132) scale(2.4 3.4)"/>
+      <use href="#star" class="gold glow twinkle" transform="translate(-328 -200) scale(1.8 2.6)"/>
+      <use href="#star" class="gold twinkle" transform="translate(-552 190) scale(1.2)"/>
+      <use href="#star" class="gold glow twinkle" transform="translate(-360 190) scale(1.6 2.2)"/>
+      <path class="thin" d="M-576 -204 H-386"/>
+      <path class="thin dots" d="M-600 -196 V-150 M-512 -196 V-160 M-512 -100 V-40"/>
+      <path class="gold" d="M-600 -148 l5 12 l-5 12 l-5 -12 Z"/>
+      <circle class="gold" cx="-576" cy="-204" r="3.5"/>
+      <circle class="gold" cx="-386" cy="-204" r="3.5"/>
+      <path class="thin" d="M-742 -150 C-770 -120 -772 -70 -772 -40 M-742 150 C-770 120 -772 70 -772 40"/>
+      <use href="#star" class="gold" transform="translate(-806 0) scale(1.6 3)"/>
+    </g>
+  </defs>
+
+  <!-- plaque -->
+  <g fill="url(#plate)">
+    <use href="#qfill"/>
+    <use href="#qfill" transform="scale(-1 1)"/>
+    <use href="#qfill" transform="scale(1 -1)"/>
+    <use href="#qfill" transform="scale(-1 -1)"/>
+    <rect x="-700" y="-180" width="1400" height="360"/>
+  </g>
+  <use href="#outline" class="frame" stroke-width="3.5"/>
+  <use href="#outline" class="thin" stroke-width="1.6" transform="scale(.972 .925)"/>
+
+  <use href="#side"/>
+  <use href="#side" transform="scale(-1 1)"/>
+  <use href="#star" class="gold" transform="translate(0 -250) scale(3.6 5.6)"/>
+  <use href="#star" class="gold" transform="translate(0 250) scale(3.6 5.6)"/>
+
+  <text class="label" y="-140" font-size="54" letter-spacing="19" id="title"></text>
+  <g id="digits" transform="translate(0 36)"></g>
+  <text id="plus" x="430" y="-96"></text>
+
+  <text class="label" y="186" font-size="38" letter-spacing="6" id="subtitle"></text>
+</svg>
+
+<script>
+// Worker address (no trailing slash)
+const WORKER_URL = 'https://marathon-timer.YOUR-SUBDOMAIN.workers.dev';
+const POLL_MS = 2000;
+const TITLE = 'Marathon';
+const SUBTITLE = 'Donations add time';
+// timer2.html?demo shows a sample countdown without contacting the worker
+const DEMO = location.search.includes('demo');
+
+const root = document.getElementById('root');
+const digitsEl = document.getElementById('digits');
+const plusEl = document.getElementById('plus');
+document.getElementById('title').textContent = TITLE;
+document.getElementById('subtitle').textContent = SUBTITLE;
+
+const DIGIT_W = 112;
+const COLON_W = 56;
+
+let state = null;      // last snapshot from the worker
+let clockOffset = 0;   // worker clock minus local clock
+let shown = '';
+
+const pad = (n) => String(n).padStart(2, '0');
+
+function format(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${pad(Math.floor(total / 3600))}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
+}
+
+function remaining(s) {
+  return s.running ? s.endsAt - (Date.now() + clockOffset) : s.remainingMs;
+}
+
+// Every digit gets its own fixed-width slot so the row does not shift as digits change.
+function drawDigits(text) {
+  const width = [...text].reduce((w, c) => w + (c === ':' ? COLON_W : DIGIT_W), 0);
+  let x = -width / 2;
+  let html = '';
+  for (const c of text) {
+    if (c === ':') {
+      const cx = x + COLON_W / 2;
+      html += `<use href="#star" class="gold" transform="translate(${cx} -72) scale(1.7 2.3)"/>`;
+      html += `<use href="#star" class="gold" transform="translate(${cx} -8) scale(1.7 2.3)"/>`;
+      x += COLON_W;
+    } else {
+      html += `<text x="${x + DIGIT_W / 2}" y="32">${c}</text>`;
+      x += DIGIT_W;
+    }
+  }
+  digitsEl.innerHTML = html;
+}
+
+function render() {
+  if (!state) return;
+  const ms = Math.max(0, remaining(state));
+  const text = format(ms);
+  if (text !== shown) {
+    shown = text;
+    drawDigits(text);
+  }
+  root.classList.toggle('paused', !state.running);
+}
+
+function restart(el, cls) {
+  el.classList.remove(cls);
+  void el.getBoundingClientRect(); // restart the animation
+  el.classList.add(cls);
+}
+
+function showPlus(ms) {
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  plusEl.textContent = `+${h ? h + ':' + pad(Math.floor(total / 60) % 60) : Math.floor(total / 60)}:${pad(total % 60)}`;
+  restart(plusEl, 'show');
+  restart(root, 'bump');
+}
+
+async function poll() {
+  try {
+    const sent = Date.now();
+    const res = await fetch(`${WORKER_URL}/api/timer`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    const next = await res.json();
+    const before = state && Math.max(0, remaining(state));
+    clockOffset = next.now - (sent + Date.now()) / 2;
+    const added = state ? Math.max(0, remaining(next)) - before : 0;
+    state = next;
+    if (added > 1500) showPlus(added);
+  } catch (e) {
+    // keep counting from the last known snapshot
+  }
+  render();
+}
+
+if (DEMO) {
+  state = { running: true, endsAt: Date.now() + (8 * 3600 + 42 * 60 + 17) * 1000 };
+} else {
+  poll();
+  setInterval(poll, POLL_MS);
+}
+drawDigits('00:00:00');
+setInterval(render, 200);
+render();
+</script>
+</body>
+</html>
