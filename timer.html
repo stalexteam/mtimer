@@ -60,6 +60,13 @@ const wrap = document.getElementById('wrap');
 const timeEl = document.getElementById('time');
 const plusEl = document.getElementById('plus');
 const notify = new Audio('notify.mp3'); // played when time is added
+// OBS serves local files without Range support, which <audio> needs, so play from memory instead.
+// On file:// fetch is blocked by CORS, so the direct src stays.
+(location.protocol === 'file:' ? Promise.reject() : fetch('notify.mp3'))
+  .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(res.status)))
+  .then((buf) => { notify.src = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' })); })
+  .catch(() => {})
+  .then(playNotify); // also play once on page load
 
 let state = null;      // last snapshot from the worker
 let clockOffset = 0;   // worker clock minus local clock
@@ -96,7 +103,7 @@ function showPlus(ms) {
 function playNotify() {
   notify.currentTime = 0; // restart if the previous one is still playing
   // stays silent if notify.mp3 is missing, or in a regular browser until the page is clicked
-  notify.play().catch(() => {});
+  notify.play().catch((e) => console.warn('notify.mp3:', e.name, e.message));
 }
 
 async function poll() {
